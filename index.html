@@ -1,0 +1,1264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>🎙️ Professional WAV Recorder</title>
+<style>
+  :root {
+    /* Logic Pro Color Palette */
+    --bg: #1c1c1e;
+    --surface: #2c2c2e;
+    --surface-elevated: #3a3a3c;
+    --surface-control: #48484a;
+    --border: #48484a;
+    --border-light: #636366;
+    --text-primary: #ffffff;
+    --text-secondary: #aeaeb2;
+    --text-tertiary: #8e8e93;
+    --accent-blue: #007aff;
+    --accent-green: #30d158;
+    --accent-orange: #ff9500;
+    --accent-red: #ff3b30;
+    --accent-purple: #af52de;
+    --meter-green: #30d158;
+    --meter-yellow: #ffcc02;
+    --meter-red: #ff3b30;
+    --shadow: rgba(0, 0, 0, 0.3);
+    --shadow-heavy: rgba(0, 0, 0, 0.5);
+  }
+
+  * {
+    box-sizing: border-box;
+  }
+
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", Arial, sans-serif;
+    background: var(--bg);
+    color: var(--text-primary);
+    margin: 0;
+    padding: 20px;
+    min-height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    font-weight: 400;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .main-container {
+    display: grid;
+    grid-template-columns: 600px 280px;
+    gap: 16px;
+    align-items: start;
+    max-width: 1200px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    overflow: hidden;
+    box-shadow: 0 4px 20px var(--shadow);
+  }
+
+  .panel-header {
+    background: var(--surface-elevated);
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .panel-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0;
+  }
+
+  .panel-subtitle {
+    font-size: 12px;
+    color: var(--text-secondary);
+    margin: 0;
+  }
+
+  .panel-content {
+    padding: 20px;
+  }
+
+  /* Main Control Panel */
+  .control-section {
+    margin-bottom: 24px;
+  }
+
+  .control-section:last-child {
+    margin-bottom: 0;
+  }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin: 0 0 12px 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .control-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 12px;
+  }
+
+  .control-group {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+  }
+
+  select, input[type="range"] {
+    background: var(--surface-control);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 13px;
+    padding: 8px 12px;
+    outline: none;
+    transition: border-color 0.2s ease;
+  }
+
+  select:focus, input[type="range"]:focus {
+    border-color: var(--accent-blue);
+  }
+
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='%23aeaeb2' viewBox='0 0 16 16'%3e%3cpath d='M8 11L3 6h10l-5 5z'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 8px center;
+    background-size: 12px;
+    padding-right: 32px;
+  }
+
+  /* VU Meter */
+  .meter-container {
+    background: var(--surface-elevated);
+    border-radius: 8px;
+    padding: 12px;
+    border: 1px solid var(--border);
+  }
+
+  .meter-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+
+  .meter-label {
+    font-size: 11px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+  }
+
+  .quality-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px var(--accent-green);
+  }
+
+  .quality-indicator.medium {
+    background: var(--accent-orange);
+    box-shadow: 0 0 6px var(--accent-orange);
+  }
+
+  .quality-indicator.poor {
+    background: var(--accent-red);
+    box-shadow: 0 0 6px var(--accent-red);
+  }
+
+  .meter-track {
+    height: 8px;
+    background: linear-gradient(90deg, #1a1a1a 0%, #2a2a2a 100%);
+    border-radius: 4px;
+    overflow: hidden;
+    border: 1px solid #333;
+    position: relative;
+  }
+
+  .meter-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--meter-green) 0%, var(--meter-green) 60%, var(--meter-yellow) 80%, var(--meter-red) 100%);
+    border-radius: 3px;
+    transition: width 0.1s linear;
+    box-shadow: 0 0 8px rgba(48, 209, 88, 0.3);
+  }
+
+  .meter-status {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 8px;
+    font-size: 11px;
+    color: var(--text-secondary);
+  }
+
+  .timer {
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-weight: 600;
+    color: var(--text-primary);
+    background: #000;
+    padding: 2px 8px;
+    border-radius: 4px;
+    border: 1px solid #333;
+  }
+
+  .recording-status {
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .recording-status.recording {
+    color: var(--accent-red);
+    animation: pulse 1s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.6; }
+  }
+
+  /* Buttons */
+  .button-row {
+    display: flex;
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .btn {
+    padding: 10px 16px;
+    border-radius: 8px;
+    border: none;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    outline: none;
+  }
+
+  .btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px var(--shadow);
+  }
+
+  .btn:active {
+    transform: translateY(0);
+  }
+
+  .btn-primary {
+    background: var(--accent-blue);
+    color: white;
+  }
+
+  .btn-danger {
+    background: var(--accent-red);
+    color: white;
+    box-shadow: 0 0 20px rgba(255, 59, 48, 0.3);
+  }
+
+  .btn-secondary {
+    background: var(--surface-control);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+  }
+
+  /* EQ Section */
+  .eq-container {
+    background: var(--surface-elevated);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--border);
+  }
+
+  .eq-controls {
+    display: flex;
+    justify-content: space-around;
+    align-items: end;
+    gap: 16px;
+    margin: 20px 0;
+  }
+
+  .eq-channel {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+  }
+
+  .eq-label {
+    font-size: 10px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .eq-slider-container {
+    position: relative;
+    height: 120px;
+    width: 24px;
+    background: linear-gradient(180deg, #1a1a1a 0%, #0a0a0a 100%);
+    border-radius: 12px;
+    border: 1px solid #333;
+    box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.5);
+  }
+
+  .eq-slider {
+    -webkit-appearance: none;
+    appearance: none;
+    position: absolute;
+    width: 100px;
+    height: 20px;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%) rotate(-90deg);
+    background: transparent;
+    outline: none;
+  }
+
+  .eq-slider::-webkit-slider-track {
+    height: 2px;
+    background: #333;
+    border-radius: 1px;
+  }
+
+  .eq-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 12px;
+    background: linear-gradient(180deg, #f0f0f0 0%, #d0d0d0 100%);
+    border-radius: 2px;
+    border: 1px solid #999;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .eq-slider::-moz-range-track {
+    height: 2px;
+    background: #333;
+    border-radius: 1px;
+  }
+
+  .eq-slider::-moz-range-thumb {
+    width: 20px;
+    height: 12px;
+    background: linear-gradient(180deg, #f0f0f0 0%, #d0d0d0 100%);
+    border-radius: 2px;
+    border: 1px solid #999;
+    cursor: pointer;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+  }
+
+  .eq-value {
+    font-size: 10px;
+    color: var(--accent-green);
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+    font-weight: 600;
+    background: rgba(0, 0, 0, 0.5);
+    padding: 2px 6px;
+    border-radius: 3px;
+    border: 1px solid #333;
+    min-width: 42px;
+    text-align: center;
+  }
+
+  .preset-buttons {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+    margin-top: 16px;
+  }
+
+  .preset-btn {
+    padding: 6px 12px;
+    font-size: 11px;
+    background: var(--surface-control);
+    color: var(--text-secondary);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .preset-btn:hover {
+    background: var(--surface-elevated);
+    color: var(--text-primary);
+  }
+
+  /* Speaker Monitor */
+  .speaker-container {
+    background: var(--surface-elevated);
+    border-radius: 8px;
+    padding: 16px;
+    border: 1px solid var(--border);
+    text-align: center;
+  }
+
+  .speaker-icon {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 16px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, #4a4a4c, #3a3a3c);
+    border: 2px solid var(--border-light);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    position: relative;
+    transition: all 0.3s ease;
+  }
+
+  .speaker-icon.active {
+    border-color: var(--accent-green);
+    box-shadow: 0 0 20px rgba(48, 209, 88, 0.3);
+    animation: speaker-pulse 1.5s ease-in-out infinite;
+  }
+
+  @keyframes speaker-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.05); }
+  }
+
+  .volume-control {
+    margin: 16px 0;
+  }
+
+  .volume-slider {
+    width: 100%;
+    margin: 8px 0;
+    -webkit-appearance: none;
+    appearance: none;
+    height: 6px;
+    background: var(--surface-control);
+    border-radius: 3px;
+    outline: none;
+    border: 1px solid var(--border);
+  }
+
+  .volume-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 18px;
+    height: 18px;
+    background: var(--accent-green);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  .volume-slider::-moz-range-thumb {
+    width: 18px;
+    height: 18px;
+    background: var(--accent-green);
+    border-radius: 50%;
+    cursor: pointer;
+    border: 2px solid white;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+
+  .volume-display {
+    font-size: 12px;
+    color: var(--text-secondary);
+    font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  }
+
+  .monitor-btn {
+    width: 100%;
+    padding: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    background: var(--surface-control);
+    color: var(--text-primary);
+    border: 1px solid var(--border-light);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .monitor-btn.active {
+    background: var(--accent-green);
+    color: white;
+    border-color: var(--accent-green);
+  }
+
+  .monitor-btn:hover {
+    background: var(--surface-elevated);
+  }
+
+  .monitor-btn.active:hover {
+    background: #28a745;
+  }
+
+  /* Footer */
+  .footer {
+    grid-column: 1 / -1;
+    text-align: center;
+    padding: 16px;
+    font-size: 11px;
+    color: var(--text-tertiary);
+    border-top: 1px solid var(--border);
+    margin-top: 16px;
+  }
+
+  /* Responsive */
+  @media (max-width: 920px) {
+    .main-container {
+      grid-template-columns: 1fr;
+      max-width: 600px;
+    }
+  }
+</style>
+</head>
+<body>
+  <div class="main-container">
+    <!-- Main Control Panel -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h1 class="panel-title">Audio Recorder</h1>
+          <p class="panel-subtitle">Professional WAV Recording with EQ</p>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 11px; color: var(--text-tertiary);">Sample Rate</div>
+          <div style="font-size: 13px; font-weight: 600; color: var(--accent-green);" id="sr">-</div>
+        </div>
+      </div>
+
+      <div class="panel-content">
+        <!-- Device & Quality Settings -->
+        <div class="control-section">
+          <h3 class="section-title">Input Configuration</h3>
+          
+          <div class="control-group" style="margin-bottom: 12px;">
+            <label for="device">Audio Input Device</label>
+            <select id="device"></select>
+          </div>
+
+          <div class="control-row">
+            <div class="control-group">
+              <label for="sampleRate">Sample Rate</label>
+              <select id="sampleRate">
+                <option value="48000">48 kHz (Professional)</option>
+                <option value="44100">44.1 kHz (CD Quality)</option>
+                <option value="22050">22 kHz (Voice)</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <label for="channels">Channels</label>
+              <select id="channels">
+                <option value="2">Stereo</option>
+                <option value="1">Mono</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <!-- Level Meter -->
+        <div class="control-section">
+          <div class="meter-container">
+            <div class="meter-header">
+              <span class="meter-label">Input Level</span>
+              <div class="quality-indicator" id="qualityIndicator"></div>
+            </div>
+            <div class="meter-track">
+              <div class="meter-fill" id="vu"></div>
+            </div>
+            <div class="meter-status">
+              <div>
+                <span class="timer" id="timer">00:00</span>
+              </div>
+              <div class="recording-status" id="rec-state">READY</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transport Controls -->
+        <div class="control-section">
+          <div class="button-row">
+            <button id="record" class="btn btn-primary">
+              <span>⏺</span> Record
+            </button>
+            <button id="download-last" class="btn btn-secondary">
+              <span>⬇</span> Download
+            </button>
+          </div>
+        </div>
+
+        <!-- EQ Section -->
+        <div class="control-section">
+          <div class="eq-container">
+            <h3 class="section-title">Equalizer</h3>
+            
+            <div class="eq-controls">
+              <div class="eq-channel">
+                <div class="eq-label">Bass</div>
+                <div class="eq-slider-container">
+                  <input id="bass" class="eq-slider" type="range" min="-15" max="15" step="0.5" value="0" />
+                </div>
+                <div class="eq-value" id="bass-val">0.0 dB</div>
+              </div>
+
+              <div class="eq-channel">
+                <div class="eq-label">Mid</div>
+                <div class="eq-slider-container">
+                  <input id="mid" class="eq-slider" type="range" min="-15" max="15" step="0.5" value="0" />
+                </div>
+                <div class="eq-value" id="mid-val">0.0 dB</div>
+              </div>
+
+              <div class="eq-channel">
+                <div class="eq-label">Treble</div>
+                <div class="eq-slider-container">
+                  <input id="treble" class="eq-slider" type="range" min="-15" max="15" step="0.5" value="0" />
+                </div>
+                <div class="eq-value" id="treble-val">0.0 dB</div>
+              </div>
+
+              <div class="eq-channel">
+                <div class="eq-label">Gain</div>
+                <div class="eq-slider-container">
+                  <input id="gain" class="eq-slider" type="range" min="0" max="2" step="0.01" value="1" />
+                </div>
+                <div class="eq-value" id="gain-val">1.00x</div>
+              </div>
+            </div>
+
+            <div class="preset-buttons">
+              <button class="preset-btn" id="preset-lofi">Lo-Fi</button>
+              <button class="preset-btn" id="preset-voice">Voice</button>
+              <button class="preset-btn" id="preset-warm">Warm</button>
+              <button class="preset-btn" id="preset-flat">Flat</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Format Info -->
+        <div style="font-size: 11px; color: var(--text-tertiary); text-align: center; padding: 12px; background: var(--surface-elevated); border-radius: 6px; margin-top: 16px;">
+          Output: <strong id="format-info" style="color: var(--accent-green);">16-bit PCM WAV (Stereo)</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- Monitor Speaker -->
+    <div class="panel">
+      <div class="panel-header">
+        <div>
+          <h2 class="panel-title">Monitor</h2>
+          <p class="panel-subtitle">Speaker Output</p>
+        </div>
+      </div>
+
+      <div class="panel-content">
+        <div class="speaker-container">
+          <div class="speaker-icon" id="speakerIcon">🔊</div>
+          
+          <div class="volume-control">
+            <label>Volume</label>
+            <input type="range" class="volume-slider" id="volumeSlider" min="0" max="100" value="70">
+            <div class="volume-display" id="volumeDisplay">70%</div>
+          </div>
+
+          <button class="monitor-btn" id="monitor">Enable Monitor</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+/* ===== Logic Pro Style WAV Recorder ===== */
+
+let audioCtx = null;
+let stream = null;
+let source = null;
+let analyser = null;
+let bassFilter = null, midFilter = null, trebleFilter = null;
+let preGain = null;
+let monitorGainNode = null;
+let processor = null;
+let nullGain = null;
+
+let capturing = false;
+let recordingChunks = [];
+let startTs = 0;
+let timerId = null;
+let monitoring = false;
+let lastWavBlobUrl = null;
+
+/* ===== UI Elements ===== */
+const deviceSel = document.getElementById('device');
+const sampleRateSel = document.getElementById('sampleRate');
+const channelsSel = document.getElementById('channels');
+const recordBtn = document.getElementById('record');
+const monitorBtn = document.getElementById('monitor');
+const downloadLastBtn = document.getElementById('download-last');
+const vuBar = document.getElementById('vu');
+const timerEl = document.getElementById('timer');
+const srEl = document.getElementById('sr');
+const recStateEl = document.getElementById('rec-state');
+const qualityIndicator = document.getElementById('qualityIndicator');
+const formatInfo = document.getElementById('format-info');
+const speakerIcon = document.getElementById('speakerIcon');
+const volumeSlider = document.getElementById('volumeSlider');
+const volumeDisplay = document.getElementById('volumeDisplay');
+
+const bassEl = document.getElementById('bass'), midEl = document.getElementById('mid'), trebleEl = document.getElementById('treble'), gainEl = document.getElementById('gain');
+const bassVal = document.getElementById('bass-val'), midVal = document.getElementById('mid-val'), trebleVal = document.getElementById('treble-val'), gainVal = document.getElementById('gain-val');
+
+const presetLofi = document.getElementById('preset-lofi'), presetVoice = document.getElementById('preset-voice'), presetWarm = document.getElementById('preset-warm'), presetFlat = document.getElementById('preset-flat');
+
+/* ===== Helper Functions ===== */
+function tsFilename(prefix, ext){
+  const t = new Date();
+  const pad = (n)=>String(n).padStart(2,'0');
+  return `${prefix}-${t.getFullYear()}${pad(t.getMonth()+1)}${pad(t.getDate())}_${pad(t.getHours())}${pad(t.getMinutes())}${pad(t.getSeconds())}.${ext}`;
+}
+
+function startTimer(){ 
+  startTs = Date.now(); 
+  timerId = setInterval(()=>{
+    const s = Math.floor((Date.now()-startTs)/1000); 
+    timerEl.textContent = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
+  }, 500);
+}
+
+function stopTimer(){ 
+  clearInterval(timerId); 
+  timerEl.textContent="00:00"; 
+}
+
+function updateQualityIndicator(sampleRate, channels) {
+  const indicator = qualityIndicator;
+  const info = formatInfo;
+  
+  if (sampleRate >= 48000 && channels >= 2) {
+    indicator.className = 'quality-indicator';
+    info.textContent = `24-bit PCM WAV (${channels === 2 ? 'Stereo' : 'Mono'}) - Professional`;
+  } else if (sampleRate >= 44100) {
+    indicator.className = 'quality-indicator medium';
+    info.textContent = `16-bit PCM WAV (${channels === 2 ? 'Stereo' : 'Mono'}) - CD Quality`;
+  } else {
+    indicator.className = 'quality-indicator poor';
+    info.textContent = `16-bit PCM WAV (${channels === 2 ? 'Stereo' : 'Mono'}) - Voice Quality`;
+  }
+}
+
+/* ===== WAV Encoding Functions ===== */
+function flattenFloat32Array(chunks, channels = 2) {
+  let totalLength = 0;
+  for (const chunk of chunks) {
+    totalLength += chunk[0].length;
+  }
+  
+  const result = [];
+  for (let ch = 0; ch < channels; ch++) {
+    result[ch] = new Float32Array(totalLength);
+  }
+  
+  let offset = 0;
+  for (const chunk of chunks) {
+    const frameLength = chunk[0].length;
+    for (let ch = 0; ch < channels; ch++) {
+      result[ch].set(chunk[ch] || chunk[0], offset);
+    }
+    offset += frameLength;
+  }
+  
+  return result;
+}
+
+function encodeWAV(channelArrays, sampleRate) {
+  const channels = channelArrays.length;
+  const length = channelArrays[0].length;
+  const buffer = new ArrayBuffer(44 + length * channels * 2);
+  const view = new DataView(buffer);
+
+  // WAV Header
+  const writeString = (offset, string) => {
+    for (let i = 0; i < string.length; i++) {
+      view.setUint8(offset + i, string.charCodeAt(i));
+    }
+  };
+
+  writeString(0, 'RIFF');
+  view.setUint32(4, 36 + length * channels * 2, true);
+  writeString(8, 'WAVE');
+  writeString(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, channels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * channels * 2, true);
+  view.setUint16(32, channels * 2, true);
+  view.setUint16(34, 16, true);
+  writeString(36, 'data');
+  view.setUint32(40, length * channels * 2, true);
+
+  // Interleave channels and convert to 16-bit PCM
+  let offset = 44;
+  for (let i = 0; i < length; i++) {
+    for (let ch = 0; ch < channels; ch++) {
+      let sample = Math.max(-1, Math.min(1, channelArrays[ch][i]));
+      view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
+      offset += 2;
+    }
+  }
+
+  return new Blob([view], { type: 'audio/wav' });
+}
+
+/* ===== Device Management ===== */
+async function populateDevices(){
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const inputs = devices.filter(d=>d.kind==='audioinput');
+  deviceSel.innerHTML = '';
+  for(const d of inputs){
+    const o = document.createElement('option'); 
+    o.value = d.deviceId; 
+    o.textContent = d.label || `Input ${deviceSel.options.length + 1}`; 
+    deviceSel.appendChild(o);
+  }
+}
+
+/* ===== Enhanced Audio Setup ===== */
+async function setupAudio(deviceId){
+  stopStream();
+  
+  const sampleRate = parseInt(sampleRateSel.value);
+  const channels = parseInt(channelsSel.value);
+  
+  if(!audioCtx || audioCtx.state === 'closed') {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)({
+      sampleRate: sampleRate
+    });
+  }
+  
+  const constraints = {
+    audio: {
+      deviceId: deviceId ? { exact: deviceId } : undefined,
+      sampleRate: { ideal: sampleRate },
+      channelCount: { ideal: channels },
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
+      latency: 0.01
+    }
+  };
+
+  try {
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+  } catch (error) {
+    console.warn('High-quality constraints failed, using fallback:', error);
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        deviceId: deviceId ? { exact: deviceId } : undefined,
+        sampleRate: sampleRate,
+        channelCount: channels
+      }
+    });
+  }
+
+  source = audioCtx.createMediaStreamSource(stream);
+
+  // Create EQ chain
+  bassFilter = audioCtx.createBiquadFilter();
+  bassFilter.type = 'lowshelf';
+  bassFilter.frequency.value = 200;
+
+  midFilter = audioCtx.createBiquadFilter();
+  midFilter.type = 'peaking';
+  midFilter.frequency.value = 1000;
+  midFilter.Q.value = 1.0;
+
+  trebleFilter = audioCtx.createBiquadFilter();
+  trebleFilter.type = 'highshelf';
+  trebleFilter.frequency.value = 3000;
+
+  preGain = audioCtx.createGain();
+  preGain.gain.value = Number(gainEl.value);
+
+  monitorGainNode = audioCtx.createGain();
+  monitorGainNode.gain.value = Number(volumeSlider.value) / 100;
+
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 8192;
+  analyser.smoothingTimeConstant = 0.3;
+
+  processor = audioCtx.createScriptProcessor(4096, channels, channels);
+  
+  nullGain = audioCtx.createGain();
+  nullGain.gain.value = 0;
+
+  // Connect the audio graph
+  source.connect(bassFilter);
+  bassFilter.connect(midFilter);
+  midFilter.connect(trebleFilter);
+  trebleFilter.connect(preGain);
+  
+  preGain.connect(analyser);
+  preGain.connect(processor);
+  preGain.connect(monitorGainNode);
+  
+  processor.connect(nullGain);
+  nullGain.connect(audioCtx.destination);
+
+  // Recording processor
+  processor.onaudioprocess = (e) => {
+    if (!capturing) return;
+    
+    const channels = e.inputBuffer.numberOfChannels;
+    const channelData = [];
+    
+    for (let ch = 0; ch < channels; ch++) {
+      channelData.push(new Float32Array(e.inputBuffer.getChannelData(ch)));
+    }
+    
+    recordingChunks.push(channelData);
+  };
+
+  srEl.textContent = Math.round(audioCtx.sampleRate);
+  updateQualityIndicator(audioCtx.sampleRate, channels);
+  animateVU();
+  
+  console.log(`Audio setup: ${audioCtx.sampleRate}Hz, ${channels} channels`);
+}
+
+function stopStream(){
+  try{
+    if(stream) stream.getTracks().forEach(t=>t.stop());
+  }catch(e){}
+  stream = null;
+  
+  if(processor) {
+    processor.onaudioprocess = null;
+    try { processor.disconnect(); } catch(e){}
+    processor = null;
+  }
+  
+  [nullGain, monitorGainNode, preGain, trebleFilter, midFilter, bassFilter, source].forEach(node => {
+    if(node) {
+      try { node.disconnect(); } catch(e){}
+    }
+  });
+}
+
+/* ===== Enhanced VU Meter ===== */
+function animateVU(){
+  if(!analyser) return;
+  const data = new Uint8Array(analyser.fftSize);
+  const loop = () => {
+    if(!analyser) return;
+    analyser.getByteTimeDomainData(data);
+    
+    let peak = 0;
+    let rms = 0;
+    
+    for(let i = 0; i < data.length; i++){
+      const v = Math.abs(data[i] - 128) / 128;
+      peak = Math.max(peak, v);
+      rms += v * v;
+    }
+    
+    rms = Math.sqrt(rms / data.length);
+    const level = Math.min(100, Math.round(rms * 150));
+    vuBar.style.width = level + '%';
+    
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+}
+
+/* ===== Recording Functions ===== */
+function startRecording(){
+  if(!audioCtx || !source || !processor) {
+    console.warn('Audio not set up');
+    return;
+  }
+  
+  if(capturing) return;
+  
+  recordingChunks = [];
+  capturing = true;
+  recStateEl.textContent = 'RECORDING';
+  recStateEl.classList.add('recording');
+  startTimer();
+  
+  console.log('Recording started (WAV format)');
+}
+
+async function stopRecording(){
+  if(!capturing) return;
+  
+  capturing = false;
+  recStateEl.textContent = 'PROCESSING';
+  recStateEl.classList.remove('recording');
+  stopTimer();
+  
+  const channels = parseInt(channelsSel.value);
+  const channelArrays = flattenFloat32Array(recordingChunks, channels);
+  const wavBlob = encodeWAV(channelArrays, audioCtx.sampleRate);
+  
+  if(lastWavBlobUrl) URL.revokeObjectURL(lastWavBlobUrl);
+  lastWavBlobUrl = URL.createObjectURL(wavBlob);
+  
+  // Auto-download
+  const a = document.createElement('a');
+  a.href = lastWavBlobUrl;
+  a.download = tsFilename('rec', 'wav');
+  a.click();
+  
+  recordingChunks = [];
+  
+  setTimeout(() => {
+    recStateEl.textContent = 'READY';
+  }, 1000);
+  
+  console.log('WAV file created and downloaded');
+}
+
+/* ===== Monitor Control ===== */
+function startMonitor(){
+  if(!audioCtx || !monitorGainNode) return;
+  try { 
+    monitorGainNode.connect(audioCtx.destination); 
+  } catch(e){ console.warn('Monitor connection failed:', e); }
+  monitoring = true;
+  monitorBtn.classList.add('active');
+  monitorBtn.textContent = 'Disable Monitor';
+  speakerIcon.classList.add('active');
+}
+
+function stopMonitor(){
+  if(!audioCtx || !monitorGainNode) return;
+  try { 
+    monitorGainNode.disconnect(audioCtx.destination); 
+  } catch(e){}
+  monitoring = false;
+  monitorBtn.classList.remove('active');
+  monitorBtn.textContent = 'Enable Monitor';
+  speakerIcon.classList.remove('active');
+}
+
+/* ===== Event Handlers ===== */
+recordBtn.addEventListener('click', async ()=>{
+  if(!audioCtx || audioCtx.state === 'closed' || !source){
+    try {
+      await setupAudio(deviceSel.value);
+    } catch(e){ 
+      console.error('Setup failed:', e); 
+      alert('Failed to access microphone. Please check permissions.'); 
+      return; 
+    }
+  }
+  
+  if(recordBtn.dataset.state === 'rec'){
+    recordBtn.dataset.state = '';
+    recordBtn.className = 'btn btn-primary';
+    recordBtn.innerHTML = '<span>⏺</span> Record';
+    await stopRecording();
+  } else {
+    recordBtn.dataset.state = 'rec';
+    recordBtn.className = 'btn btn-danger';
+    recordBtn.innerHTML = '<span>⏹</span> Stop';
+    startRecording();
+  }
+});
+
+monitorBtn.addEventListener('click', async ()=>{
+  if(!audioCtx || audioCtx.state === 'closed' || !source){
+    try { await setupAudio(deviceSel.value); } catch(e){ console.error(e); return; }
+  }
+  if(monitoring) stopMonitor();
+  else startMonitor();
+});
+
+downloadLastBtn.addEventListener('click', ()=>{
+  if(!lastWavBlobUrl) { 
+    alert('No recording available yet'); 
+    return; 
+  }
+  const a = document.createElement('a'); 
+  a.href = lastWavBlobUrl; 
+  a.download = tsFilename('rec','wav'); 
+  a.click();
+});
+
+/* ===== Volume Control ===== */
+volumeSlider.addEventListener('input', ()=>{
+  const value = Number(volumeSlider.value);
+  volumeDisplay.textContent = `${value}%`;
+  if(monitorGainNode) monitorGainNode.gain.value = value / 100;
+});
+
+/* ===== EQ Controls ===== */
+function updateUIVals(){
+  bassVal.textContent = `${Number(bassEl.value).toFixed(1)} dB`;
+  midVal.textContent = `${Number(midEl.value).toFixed(1)} dB`;
+  trebleVal.textContent = `${Number(trebleEl.value).toFixed(1)} dB`;
+  gainVal.textContent = `${Number(gainEl.value).toFixed(2)}x`;
+}
+
+bassEl.addEventListener('input', ()=>{ 
+  if(bassFilter) bassFilter.gain.value = Number(bassEl.value); 
+  updateUIVals(); 
+});
+
+midEl.addEventListener('input', ()=>{ 
+  if(midFilter) midFilter.gain.value = Number(midEl.value); 
+  updateUIVals(); 
+});
+
+trebleEl.addEventListener('input', ()=>{ 
+  if(trebleFilter) trebleFilter.gain.value = Number(trebleEl.value); 
+  updateUIVals(); 
+});
+
+gainEl.addEventListener('input', ()=>{ 
+  if(preGain) preGain.gain.value = Number(gainEl.value); 
+  updateUIVals(); 
+});
+
+/* ===== Settings Changes ===== */
+async function restartAudio() {
+  const wasRecording = capturing;
+  const wasMonitoring = monitoring;
+  
+  if(wasRecording) { 
+    await stopRecording(); 
+    recordBtn.dataset.state=''; 
+    recordBtn.className = 'btn btn-primary';
+    recordBtn.innerHTML = '<span>⏺</span> Record';
+  }
+  if(wasMonitoring) stopMonitor();
+  
+  if(audioCtx && audioCtx.state !== 'closed'){ 
+    try{ await audioCtx.close(); }catch(e){} 
+  }
+  audioCtx = null;
+  
+  try{ 
+    await setupAudio(deviceSel.value); 
+  } catch(e){ 
+    console.error('Audio restart failed:', e); 
+    return; 
+  }
+  
+  // Reapply settings
+  if(bassFilter) bassFilter.gain.value = Number(bassEl.value);
+  if(midFilter) midFilter.gain.value = Number(midEl.value);
+  if(trebleFilter) trebleFilter.gain.value = Number(trebleEl.value);
+  if(preGain) preGain.gain.value = Number(gainEl.value);
+  if(monitorGainNode) monitorGainNode.gain.value = Number(volumeSlider.value) / 100;
+  
+  if(wasMonitoring) startMonitor();
+  if(wasRecording) { 
+    startRecording(); 
+    recordBtn.dataset.state='rec'; 
+    recordBtn.className = 'btn btn-danger';
+    recordBtn.innerHTML = '<span>⏹</span> Stop';
+  }
+}
+
+sampleRateSel.addEventListener('change', async ()=>{
+  updateQualityIndicator(parseInt(sampleRateSel.value), parseInt(channelsSel.value));
+  if(audioCtx) await restartAudio();
+});
+
+channelsSel.addEventListener('change', async ()=>{
+  updateQualityIndicator(parseInt(sampleRateSel.value), parseInt(channelsSel.value));
+  if(audioCtx) await restartAudio();
+});
+
+deviceSel.addEventListener('change', async ()=>{
+  await restartAudio();
+});
+
+/* ===== Presets ===== */
+function applyPreset(name){
+  if(name==='lofi'){ 
+    bassEl.value = -6; 
+    midEl.value = -6; 
+    trebleEl.value = -8; 
+    gainEl.value = 0.85; 
+  } else if(name==='voice'){ 
+    bassEl.value = -1.5; 
+    midEl.value = 4.5; 
+    trebleEl.value = 2.0; 
+    gainEl.value = 1.05; 
+  } else if(name==='warm'){ 
+    bassEl.value = 3.5; 
+    midEl.value = 1.5; 
+    trebleEl.value = -2.0; 
+    gainEl.value = 1.0; 
+  } else { 
+    bassEl.value = 0; 
+    midEl.value = 0; 
+    trebleEl.value = 0; 
+    gainEl.value = 1; 
+  }
+  
+  // Apply immediately
+  if(bassFilter) bassFilter.gain.value = Number(bassEl.value);
+  if(midFilter) midFilter.gain.value = Number(midEl.value);
+  if(trebleFilter) trebleFilter.gain.value = Number(trebleEl.value);
+  if(preGain) preGain.gain.value = Number(gainEl.value);
+  updateUIVals();
+}
+
+presetLofi.addEventListener('click', ()=>applyPreset('lofi'));
+presetVoice.addEventListener('click', ()=>applyPreset('voice'));
+presetWarm.addEventListener('click', ()=>applyPreset('warm'));
+presetFlat.addEventListener('click', ()=>applyPreset('flat'));
+
+/* ===== Initialization ===== */
+(async function boot(){
+  try{
+    const tmp = await navigator.mediaDevices.getUserMedia({ audio: true });
+    tmp.getTracks().forEach(t => t.stop());
+  }catch(e){
+    console.warn('Microphone permission denied:', e);
+  } finally {
+    await populateDevices();
+    if(deviceSel.options.length){
+      try { 
+        await setupAudio(deviceSel.value); 
+      } catch(e){ 
+        console.error('Initial setup failed:', e); 
+      }
+    }
+    updateUIVals();
+    updateQualityIndicator(parseInt(sampleRateSel.value), parseInt(channelsSel.value));
+  }
+})();
+</script>
+</body>
+</html>
