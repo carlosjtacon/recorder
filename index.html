@@ -302,6 +302,58 @@
     font-weight: 500;
   }
 
+  /* Make the record control expand to fill available horizontal space */
+  .input-level-controls .control-item.record-full {
+    flex: 1 1 auto;
+  }
+  .input-level-controls .control-item.record-full .btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  /* Switch (Auto-record) */
+  .switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--text-secondary);
+    user-select: none;
+  }
+  .switch input {
+    display: none;
+  }
+  .slider {
+    position: relative;
+    width: 42px;
+    height: 22px;
+    background: var(--surface-control);
+    border-radius: 22px;
+    margin-right: 8px;
+    transition: background 0.2s ease;
+    border: 1px solid var(--border);
+  }
+  .slider::before {
+    content: "";
+    position: absolute;
+    width: 18px;
+    height: 18px;
+    left: 2px;
+    top: 2px;
+    background: white;
+    border-radius: 50%;
+    transition: transform 0.2s ease;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+  }
+  .switch input:checked + .slider {
+    background: var(--accent-orange);
+    box-shadow: 0 6px 18px rgba(255,149,0,0.12);
+  }
+  .switch input:checked + .slider::before {
+    transform: translateX(20px);
+  }
+
   /* Buttons */
   .button-row {
     display: flex;
@@ -349,7 +401,7 @@
     border: 1px solid var(--border-light);
   }
 
-  /* Auto-record (button) style */
+  /* Auto-record (button) style preserved for compatibility */
   .btn-auto {
     background: linear-gradient(180deg, var(--accent-orange) 0%, var(--accent-orange-dark) 100%);
     color: white;
@@ -661,17 +713,21 @@
               <div class="recording-status" id="rec-state">READY</div>
             </div>
 
-            <!-- INPUT-LEVEL controls: session name (placeholder), Auto-record button, record button -->
+            <!-- INPUT-LEVEL controls: session name (placeholder), Auto-record switch, record button -->
             <div class="input-level-controls" id="inputLevelControls">
               <div class="control-item">
                 <input id="sessionNameSmall" type="text" placeholder="My Jam Session / Tape 1" />
               </div>
 
               <div class="control-item">
-                <button id="autoRecordBtn" class="btn btn-auto" title="Toggle Auto-record (detect songs and auto-save)">Auto-record</button>
+                <label class="switch" title="Toggle Auto-record (detect songs and auto-save)">
+                  <input type="checkbox" id="autoRecordSwitch" />
+                  <span class="slider"></span>
+                  <span style="font-size:12px;color:var(--text-secondary);">Auto‑record</span>
+                </label>
               </div>
 
-              <div class="control-item">
+              <div class="control-item record-full">
                 <button id="record" class="btn btn-primary"><span>⏺</span> Record</button>
               </div>
             </div>
@@ -818,7 +874,7 @@ const bassVal = document.getElementById('bass-val'), midVal = document.getElemen
 const presetLofi = document.getElementById('preset-lofi'), presetVoice = document.getElementById('preset-voice'), presetWarm = document.getElementById('preset-warm'), presetFlat = document.getElementById('preset-flat');
 
 const sessionNameSmall = document.getElementById('sessionNameSmall');
-const autoRecordBtn = document.getElementById('autoRecordBtn');
+const autoRecordSwitch = document.getElementById('autoRecordSwitch');
 
 /* ===== Helpers ===== */
 function tsFilename(prefix, ext){
@@ -1092,7 +1148,7 @@ async function setupAudio(deviceId){
     if (total > 0) rms = rms / total;
 
     // Silence detection logic (if Auto-record active)
-    if (autoRecordBtn.classList.contains('active')) {
+    if (autoRecordSwitch && autoRecordSwitch.checked) {
       const bufferSec = copied[0].length / sampleRateUsed;
       const silenceThreshold = SILENCE_THRESHOLD;
       if (rms < silenceThreshold) {
@@ -1336,18 +1392,8 @@ recordBtn.addEventListener('click', async ()=>{
   }
 });
 
-autoRecordBtn.addEventListener('click', ()=>{
-  // toggle active state
-  const isActive = autoRecordBtn.classList.toggle('active');
-  // reflect state visually and in title
-  if(isActive) {
-    autoRecordBtn.title = 'Auto-record is ON';
-    autoRecordBtn.textContent = 'Auto-record ✓';
-  } else {
-    autoRecordBtn.title = 'Auto-record is OFF';
-    autoRecordBtn.textContent = 'Auto-record';
-  }
-});
+// The Auto-record control is now a checkbox switch (autoRecordSwitch).
+// The processor checks autoRecordSwitch.checked when deciding to finalize segments.
 
 monitorBtn.addEventListener('click', async ()=>{
   if(!audioCtx || audioCtx.state === 'closed' || !source){
