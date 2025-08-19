@@ -19,6 +19,7 @@
     --accent-blue: #007aff;
     --accent-green: #30d158;
     --accent-orange: #ff9500;
+    --accent-orange-dark: #e07a00;
     --accent-red: #ff3b30;
     --accent-purple: #af52de;
     --meter-green: #30d158;
@@ -48,7 +49,7 @@
 
   .main-container {
     display: grid;
-    grid-template-columns: 600px 280px;
+    grid-template-columns: 600px 380px;
     gap: 16px;
     align-items: start;
     max-width: 1200px;
@@ -127,7 +128,7 @@
     letter-spacing: 0.3px;
   }
 
-  select, input[type="range"] {
+  select, input[type="range"], input[type="text"], input[type="number"] {
     background: var(--surface-control);
     border: 1px solid var(--border);
     border-radius: 6px;
@@ -138,7 +139,7 @@
     transition: border-color 0.2s ease;
   }
 
-  select:focus, input[type="range"]:focus {
+  select:focus, input[type="range"]:focus, input[type="text"]:focus, input[type="number"]:focus {
     border-color: var(--accent-blue);
   }
 
@@ -278,6 +279,29 @@
     50% { opacity: 0.6; }
   }
 
+  /* Controls under timer */
+  .input-level-controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    margin-top: 12px;
+    flex-wrap: wrap;
+  }
+  .input-level-controls .control-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .input-level-controls input[type="text"] {
+    min-width: 180px;
+  }
+  .input-level-controls label.inline {
+    font-size: 12px;
+    color: var(--text-secondary);
+    text-transform: none;
+    font-weight: 500;
+  }
+
   /* Buttons */
   .button-row {
     display: flex;
@@ -323,6 +347,17 @@
     background: var(--surface-control);
     color: var(--text-primary);
     border: 1px solid var(--border-light);
+  }
+
+  /* Auto-record (button) style */
+  .btn-auto {
+    background: linear-gradient(180deg, var(--accent-orange) 0%, var(--accent-orange-dark) 100%);
+    color: white;
+    border: 1px solid rgba(0,0,0,0.15);
+  }
+  .btn-auto.active {
+    box-shadow: 0 6px 18px rgba(255,149,0,0.18);
+    transform: translateY(-1px);
   }
 
   /* Simplified EQ Section */
@@ -625,18 +660,22 @@
               </div>
               <div class="recording-status" id="rec-state">READY</div>
             </div>
-          </div>
-        </div>
 
-        <!-- Transport Controls -->
-        <div class="control-section">
-          <div class="button-row">
-            <button id="record" class="btn btn-primary">
-              <span>⏺</span> Record
-            </button>
-            <button id="download-last" class="btn btn-secondary">
-              <span>⬇</span> Download
-            </button>
+            <!-- INPUT-LEVEL controls: session name (placeholder), Auto-record button, record button -->
+            <div class="input-level-controls" id="inputLevelControls">
+              <div class="control-item">
+                <input id="sessionNameSmall" type="text" placeholder="My Jam Session / Tape 1" />
+              </div>
+
+              <div class="control-item">
+                <button id="autoRecordBtn" class="btn btn-auto" title="Toggle Auto-record (detect songs and auto-save)">Auto-record</button>
+              </div>
+
+              <div class="control-item">
+                <button id="record" class="btn btn-primary"><span>⏺</span> Record</button>
+              </div>
+            </div>
+
           </div>
         </div>
 
@@ -721,8 +760,14 @@
   </div>
 
 <script>
-/* ===== Logic Pro Style WAV Recorder ===== */
+/* ===== WAV Recorder =====
+   - Silence detection defaults (hidden UI):
+       SILENCE_DURATION_MS = 800
+       SILENCE_THRESHOLD = 0.007
+   - Auto-download each finished segment >= 5s when Auto-record is active.
+*/
 
+/* ===== Globals & Audio Nodes ===== */
 let audioCtx = null;
 let stream = null;
 let source = null;
@@ -733,15 +778,23 @@ let monitorGainNode = null;
 let processor = null;
 let nullGain = null;
 
-let capturing = false;
-let recordingChunks = [];
-let startTs = 0;
+let capturing = false;              // overall recording on/off
+let currentSession = null;          // holds session metadata while recording
+let lastWavBlobUrl = null;          // last created blob URL (unused UI-wise)
 let timerId = null;
+let startTs = 0;
 let monitoring = false;
-let lastWavBlobUrl = null;
 
-let channelData = [];
-let levelHistory = { left: [], right: [] };
+let currentSegmentChunks = [];      // chunks for the currently-building segment
+let currentSegmentSamples = 0;      // samples in current segment (per channel)
+let silenceAccumSec = 0;            // accumulated silence seconds
+let sampleRateUsed = 44100;         // snapshot of audioContext sample rate
+let bufferSizeUsed = 4096;          // snapshot of processor buffer size
+
+/* ===== Silence detection defaults (hidden UI) ===== */
+const SILENCE_DURATION_MS = 800;    // default split silence (ms)
+const SILENCE_THRESHOLD = 0.007;    // increased RMS threshold (was 0.003)
+const MIN_SEGMENT_SEC = 2.0;        // discard segments shorter than this (seconds)
 
 /* ===== UI Elements ===== */
 const deviceSel = document.getElementById('device');
@@ -749,7 +802,6 @@ const sampleRateSel = document.getElementById('sampleRate');
 const channelsSel = document.getElementById('channels');
 const recordBtn = document.getElementById('record');
 const monitorBtn = document.getElementById('monitor');
-const downloadLastBtn = document.getElementById('download-last');
 const channelMetersEl = document.getElementById('channelMeters');
 const timerEl = document.getElementById('timer');
 const srEl = document.getElementById('sr');
@@ -765,7 +817,10 @@ const bassVal = document.getElementById('bass-val'), midVal = document.getElemen
 
 const presetLofi = document.getElementById('preset-lofi'), presetVoice = document.getElementById('preset-voice'), presetWarm = document.getElementById('preset-warm'), presetFlat = document.getElementById('preset-flat');
 
-/* ===== Helper Functions ===== */
+const sessionNameSmall = document.getElementById('sessionNameSmall');
+const autoRecordBtn = document.getElementById('autoRecordBtn');
+
+/* ===== Helpers ===== */
 function tsFilename(prefix, ext){
   const t = new Date();
   const pad = (n)=>String(n).padStart(2,'0');
@@ -821,8 +876,9 @@ function createChannelMeters(channels) {
   }
 }
 
-/* ===== WAV Encoding Functions ===== */
+/* ===== WAV Encoding Utilities ===== */
 function flattenFloat32Array(chunks, channels = 2) {
+  // chunks: array of [Float32Array ch0, Float32Array ch1, ...] each chunk same length per channel
   let totalLength = 0;
   for (const chunk of chunks) {
     totalLength += chunk[0].length;
@@ -837,7 +893,8 @@ function flattenFloat32Array(chunks, channels = 2) {
   for (const chunk of chunks) {
     const frameLength = chunk[0].length;
     for (let ch = 0; ch < channels; ch++) {
-      result[ch].set(chunk[ch] || chunk[0], offset);
+      const src = chunk[ch] || chunk[0];
+      result[ch].set(src, offset);
     }
     offset += frameLength;
   }
@@ -887,34 +944,42 @@ function encodeWAV(channelArrays, sampleRate) {
 
 /* ===== Device Management ===== */
 async function populateDevices(){
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const inputs = devices.filter(d=>d.kind==='audioinput');
-  deviceSel.innerHTML = '';
-  for(const d of inputs){
-    const o = document.createElement('option'); 
-    o.value = d.deviceId; 
-    o.textContent = d.label || `Input ${deviceSel.options.length + 1}`; 
-    deviceSel.appendChild(o);
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    const inputs = devices.filter(d=>d.kind==='audioinput');
+    deviceSel.innerHTML = '';
+    for(const d of inputs){
+      const o = document.createElement('option'); 
+      o.value = d.deviceId; 
+      o.textContent = d.label || `Input ${deviceSel.options.length + 1}`; 
+      deviceSel.appendChild(o);
+    }
+  } catch (e) {
+    console.warn('Could not enumerate devices', e);
   }
 }
 
-/* ===== Enhanced Audio Setup ===== */
+/* ===== Audio Graph Setup ===== */
 async function setupAudio(deviceId){
   stopStream();
-  
-  const sampleRate = parseInt(sampleRateSel.value);
+
+  const desiredSampleRate = parseInt(sampleRateSel.value);
   const channels = parseInt(channelsSel.value);
-  
+
   if(!audioCtx || audioCtx.state === 'closed') {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)({
-      sampleRate: sampleRate
+      sampleRate: desiredSampleRate
     });
   }
-  
+
+  // snapshot defaults (used for silence detection math)
+  sampleRateUsed = audioCtx.sampleRate;
+  bufferSizeUsed = 4096;
+
   const constraints = {
     audio: {
       deviceId: deviceId ? { exact: deviceId } : undefined,
-      sampleRate: { ideal: sampleRate },
+      sampleRate: { ideal: desiredSampleRate },
       channelCount: { ideal: channels },
       echoCancellation: false,
       noiseSuppression: false,
@@ -930,7 +995,7 @@ async function setupAudio(deviceId){
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         deviceId: deviceId ? { exact: deviceId } : undefined,
-        sampleRate: sampleRate,
+        sampleRate: desiredSampleRate,
         channelCount: channels
       }
     });
@@ -962,8 +1027,8 @@ async function setupAudio(deviceId){
   analyser.fftSize = 8192;
   analyser.smoothingTimeConstant = 0.2;
 
-  processor = audioCtx.createScriptProcessor(4096, channels, channels);
-  
+  processor = audioCtx.createScriptProcessor(bufferSizeUsed, channels, channels);
+
   nullGain = audioCtx.createGain();
   nullGain.gain.value = 0;
 
@@ -972,38 +1037,83 @@ async function setupAudio(deviceId){
   bassFilter.connect(midFilter);
   midFilter.connect(trebleFilter);
   trebleFilter.connect(preGain);
-  
+
   preGain.connect(analyser);
   preGain.connect(processor);
   preGain.connect(monitorGainNode);
-  
+
   processor.connect(nullGain);
   nullGain.connect(audioCtx.destination);
 
-  // Recording processor
+  // Local snapshot
+  sampleRateUsed = audioCtx.sampleRate;
+  bufferSizeUsed = processor.bufferSize || bufferSizeUsed;
+
+  // Recording / meter processor
   processor.onaudioprocess = (e) => {
-    if (!capturing) {
-      // Still process for level meters
-      const channels = e.inputBuffer.numberOfChannels;
-      const channelData = [];
-      
-      for (let ch = 0; ch < channels; ch++) {
-        channelData.push(e.inputBuffer.getChannelData(ch));
-      }
-      
-      updateChannelMeters(channelData);
-      return;
-    }
-    
     const channels = e.inputBuffer.numberOfChannels;
     const channelData = [];
-    
     for (let ch = 0; ch < channels; ch++) {
-      channelData.push(new Float32Array(e.inputBuffer.getChannelData(ch)));
+      channelData.push(e.inputBuffer.getChannelData(ch));
     }
-    
-    recordingChunks.push(channelData);
+
+    // Update meters every frame
     updateChannelMeters(channelData);
+
+    if (!capturing) {
+      return;
+    }
+
+    // Copy the chunk into Float32Array so we can keep it after this callback
+    const copied = [];
+    for (let ch = 0; ch < channels; ch++) {
+      const src = e.inputBuffer.getChannelData(ch);
+      copied.push(new Float32Array(src));
+    }
+
+    // Push into current segment buffer
+    currentSegmentChunks.push(copied);
+    currentSegmentSamples += copied[0].length;
+
+    // compute RMS for chunk across channels (average)
+    let rms = 0;
+    let total = 0;
+    for (let ch = 0; ch < channelData.length; ch++) {
+      const data = channelData[ch];
+      let local = 0;
+      for (let i = 0; i < data.length; i++) {
+        const s = data[i];
+        local += s * s;
+      }
+      local = Math.sqrt(local / data.length);
+      rms += local;
+      total++;
+    }
+    if (total > 0) rms = rms / total;
+
+    // Silence detection logic (if Auto-record active)
+    if (autoRecordBtn.classList.contains('active')) {
+      const bufferSec = copied[0].length / sampleRateUsed;
+      const silenceThreshold = SILENCE_THRESHOLD;
+      if (rms < silenceThreshold) {
+        silenceAccumSec += bufferSec;
+      } else {
+        silenceAccumSec = 0;
+      }
+
+      const silenceDur = SILENCE_DURATION_MS / 1000;
+
+      // Check if we have enough preceding silence to consider the song ended
+      // Also require segment to be non-trivial (>= MIN_SEGMENT_SEC)
+      const segmentDurationSec = currentSegmentSamples / sampleRateUsed;
+
+      if (silenceAccumSec >= silenceDur && segmentDurationSec >= MIN_SEGMENT_SEC) {
+        finalizeCurrentSegment(); // will auto-download or discard small ones and reset currentSegment*
+        silenceAccumSec = 0;
+      }
+    }
+
+    // Note: when Auto-record not active, segments are only finalized at stopRecording()
   };
 
   // Create channel meters
@@ -1034,7 +1144,7 @@ function stopStream(){
   });
 }
 
-/* ===== Enhanced Channel Level Meters ===== */
+/* ===== Channel Meters ===== */
 function updateChannelMeters(channelData) {
   if (!channelData || channelData.length === 0) return;
   
@@ -1050,7 +1160,7 @@ function updateChannelMeters(channelData) {
     }
     rms = Math.sqrt(rms / data.length);
     
-    // Apply moderate gain boost for better visibility (reduced from 8x to 3x)
+    // Apply moderate gain boost for better visibility
     const boostedLevel = Math.min(1.0, rms * 3.0);
     
     // Update meter fill (0-100% based on linear scale)
@@ -1074,7 +1184,55 @@ function updateChannelMeters(channelData) {
   }
 }
 
-/* ===== Recording Functions ===== */
+/* ===== Segment Finalization (auto-download or discard) ===== */
+function finalizeCurrentSegment(){
+  if (!currentSession) return;
+  if (!currentSegmentChunks || currentSegmentChunks.length === 0) return;
+
+  const channels = parseInt(channelsSel.value);
+  const channelArrays = flattenFloat32Array(currentSegmentChunks, channels);
+  const wavBlob = encodeWAV(channelArrays, sampleRateUsed);
+
+  const durationSec = currentSegmentSamples / sampleRateUsed;
+
+  // reset current segment buffers immediately for next segment
+  currentSegmentChunks = [];
+  currentSegmentSamples = 0;
+
+  // Only auto-download if segment duration is at least MIN_SEGMENT_SEC
+  if (durationSec >= MIN_SEGMENT_SEC) {
+    // build filename
+    const safeSessionName = (currentSession.name || 'session').replace(/\s+/g,'_').replace(/[^\w\-]/g,'').slice(0,60) || 'session';
+    currentSession.partCounter = (currentSession.partCounter || 0) + 1;
+    const idx = currentSession.partCounter;
+    const filename = `${safeSessionName}_part${String(idx).padStart(2,'0')}.wav`;
+
+    const url = URL.createObjectURL(wavBlob);
+
+    // remember last blob url for possible future use
+    if(lastWavBlobUrl) try{ URL.revokeObjectURL(lastWavBlobUrl); }catch(e){}
+    lastWavBlobUrl = url;
+
+    // trigger download (user gesture not strictly required because recording was user-initiated)
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+
+    // Revoke url after a short delay to allow download to start (avoid immediate revoke)
+    setTimeout(()=> {
+      try { URL.revokeObjectURL(url); } catch(e){}
+    }, 60 * 1000); // revoke after 60s
+
+    console.log(`Auto-downloaded ${filename} (${durationSec.toFixed(2)}s)`);
+  } else {
+    console.log(`Discarded short segment (${durationSec.toFixed(3)}s)`);
+  }
+}
+
+/* ===== Recording Controls ===== */
 function startRecording(){
   if(!audioCtx || !source || !processor) {
     console.warn('Audio not set up');
@@ -1082,47 +1240,53 @@ function startRecording(){
   }
   
   if(capturing) return;
-  
-  recordingChunks = [];
+
+  // create new session metadata (read name from small input)
+  const name = (sessionNameSmall.value || '').trim();
+  const createdAt = Date.now();
+  currentSession = {
+    name: name || `recording-${createdAt}`,
+    createdAt,
+    partCounter: 0
+  };
+
+  // clear any previous segment buffers
+  currentSegmentChunks = [];
+  currentSegmentSamples = 0;
+  silenceAccumSec = 0;
+
   capturing = true;
   recStateEl.textContent = 'RECORDING';
   recStateEl.classList.add('recording');
   startTimer();
-  
-  console.log('Recording started (WAV format)');
+
+  console.log('Recording started, session:', currentSession.name);
 }
 
 async function stopRecording(){
   if(!capturing) return;
-  
+
   capturing = false;
   recStateEl.textContent = 'PROCESSING';
   recStateEl.classList.remove('recording');
   stopTimer();
-  
-  const channels = parseInt(channelsSel.value);
-  const channelArrays = flattenFloat32Array(recordingChunks, channels);
-  const wavBlob = encodeWAV(channelArrays, audioCtx.sampleRate);
-  
-  if(lastWavBlobUrl) URL.revokeObjectURL(lastWavBlobUrl);
-  lastWavBlobUrl = URL.createObjectURL(wavBlob);
-  
-  // Auto-download
-  const a = document.createElement('a');
-  a.href = lastWavBlobUrl;
-  a.download = tsFilename('rec', 'wav');
-  a.click();
-  
-  recordingChunks = [];
-  
+
+  // finalize any remaining current segment
+  if (currentSegmentChunks && currentSegmentChunks.length > 0) {
+    finalizeCurrentSegment();
+  }
+
+  // clear session metadata after stop
+  currentSession = null;
+
   setTimeout(() => {
     recStateEl.textContent = 'READY';
-  }, 1000);
-  
-  console.log('WAV file created and downloaded');
+  }, 800);
+
+  console.log('Recording stopped; processed last segment(s).');
 }
 
-/* ===== Monitor Control ===== */
+/* ===== Monitoring Control ===== */
 function startMonitor(){
   if(!audioCtx || !monitorGainNode) return;
   try { 
@@ -1145,7 +1309,7 @@ function stopMonitor(){
   speakerIcon.classList.remove('active');
 }
 
-/* ===== Event Handlers ===== */
+/* ===== Event Handlers / UI bindings ===== */
 recordBtn.addEventListener('click', async ()=>{
   if(!audioCtx || audioCtx.state === 'closed' || !source){
     try {
@@ -1158,15 +1322,30 @@ recordBtn.addEventListener('click', async ()=>{
   }
   
   if(recordBtn.dataset.state === 'rec'){
+    // stop
     recordBtn.dataset.state = '';
     recordBtn.className = 'btn btn-primary';
     recordBtn.innerHTML = '<span>⏺</span> Record';
     await stopRecording();
   } else {
+    // start
     recordBtn.dataset.state = 'rec';
     recordBtn.className = 'btn btn-danger';
     recordBtn.innerHTML = '<span>⏹</span> Stop';
     startRecording();
+  }
+});
+
+autoRecordBtn.addEventListener('click', ()=>{
+  // toggle active state
+  const isActive = autoRecordBtn.classList.toggle('active');
+  // reflect state visually and in title
+  if(isActive) {
+    autoRecordBtn.title = 'Auto-record is ON';
+    autoRecordBtn.textContent = 'Auto-record ✓';
+  } else {
+    autoRecordBtn.title = 'Auto-record is OFF';
+    autoRecordBtn.textContent = 'Auto-record';
   }
 });
 
@@ -1176,17 +1355,6 @@ monitorBtn.addEventListener('click', async ()=>{
   }
   if(monitoring) stopMonitor();
   else startMonitor();
-});
-
-downloadLastBtn.addEventListener('click', ()=>{
-  if(!lastWavBlobUrl) { 
-    alert('No recording available yet'); 
-    return; 
-  }
-  const a = document.createElement('a'); 
-  a.href = lastWavBlobUrl; 
-  a.download = tsFilename('rec','wav'); 
-  a.click();
 });
 
 /* ===== Volume Control ===== */
@@ -1224,7 +1392,7 @@ gainEl.addEventListener('input', ()=>{
   updateUIVals(); 
 });
 
-/* ===== Settings Changes ===== */
+/* ===== Settings Changes (restart audio) ===== */
 async function restartAudio() {
   const wasRecording = capturing;
   const wasMonitoring = monitoring;
