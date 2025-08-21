@@ -32,7 +32,7 @@ let bufferSizeUsed = 4096;          // snapshot of processor buffer size
 /* ===== Silence detection defaults (hidden UI) ===== */
 const SILENCE_DURATION_MS = 800;    // default split silence (ms)
 const SILENCE_THRESHOLD = 0.007;    // increased RMS threshold (was 0.003)
-const MIN_SEGMENT_SEC = 2.0;        // discard segments shorter than this (seconds)
+const MIN_SEGMENT_SEC = 5.0;        // discard segments shorter than this (seconds)
 
 /* ===== UI Elements ===== */
 const deviceSel = document.getElementById('device');
