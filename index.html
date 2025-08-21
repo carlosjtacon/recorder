@@ -69,21 +69,29 @@
               <div class="recording-status" id="rec-state">READY</div>
             </div>
 
-            <!-- INPUT-LEVEL controls: session name (placeholder), Auto-record switch, record button -->
+            <!-- INPUT-LEVEL controls: session name (placeholder), toggles, and record button -->
             <div class="input-level-controls" id="inputLevelControls">
               <div class="control-item">
                 <input id="sessionNameSmall" type="text" placeholder="My Jam Session / Tape 1" />
               </div>
 
-              <div class="control-item">
+              <!-- Row with both toggles: Auto-record and Normalize -->
+              <div class="control-item" style="display:flex; gap:8px; align-items:center;">
                 <label class="switch" title="Toggle Auto-record (detect songs and auto-save)">
                   <input type="checkbox" id="autoRecordSwitch" />
                   <span class="slider"></span>
-                  <span style="font-size:12px;color:var(--text-secondary);">Auto‑record</span>
                 </label>
+                <div style="font-size:12px;color:var(--text-secondary);">Auto-record</div>
+
+                <label class="switch" title="Normalize final recording to -14 LUFS">
+                  <input type="checkbox" id="normalizeSwitch" />
+                  <span class="slider"></span>
+                </label>
+                <div style="font-size:12px;color:var(--text-secondary);">Normalize</div>
               </div>
 
-              <div class="control-item record-full">
+              <!-- Record button below, full width -->
+              <div class="control-item record-full" style="width:100%; margin-top: 10px;">
                 <button id="record" class="btn btn-primary"><span>⏺</span> Record</button>
               </div>
             </div>

@@ -29,6 +29,9 @@ let silenceAccumSec = 0;            // accumulated silence seconds
 let sampleRateUsed = 44100;         // snapshot of audioContext sample rate
 let bufferSizeUsed = 4096;          // snapshot of processor buffer size
 
+// === Normalization flag (new) ===
+let normalizationEnabled = false;   // controlled by Normalize switch in UI
+
 /* ===== Silence detection defaults (hidden UI) ===== */
 const SILENCE_DURATION_MS = 800;    // default split silence (ms)
 const SILENCE_THRESHOLD = 0.007;    // increased RMS threshold (was 0.003)
@@ -57,6 +60,7 @@ const presetLofi = document.getElementById('preset-lofi'), presetVoice = documen
 
 const sessionNameSmall = document.getElementById('sessionNameSmall');
 const autoRecordSwitch = document.getElementById('autoRecordSwitch');
+const normalizeSwitch = document.getElementById('normalizeSwitch'); // new
 
 /* ===== Helpers ===== */
 function tsFilename(prefix, ext){
@@ -178,6 +182,91 @@ function encodeWAV(channelArrays, sampleRate) {
   }
 
   return new Blob([view], { type: 'audio/wav' });
+}
+
+/* ===== Normalization Utilities (new) ===== */
+
+/**
+ * Estimate LUFS (approx) from channel arrays.
+ * This is a simple RMS-based approximation: LUFS ≈ 20*log10(rms).
+ * channelArrays: [Float32Array ch0, Float32Array ch1, ...]
+ */
+function calculateLUFSFromChannelArrays(channelArrays) {
+  if (!channelArrays || channelArrays.length === 0) return -Infinity;
+  const channels = channelArrays.length;
+  const length = channelArrays[0].length;
+  if (length === 0) return -Infinity;
+
+  let sumSquares = 0;
+  for (let ch = 0; ch < channels; ch++) {
+    const arr = channelArrays[ch];
+    for (let i = 0; i < arr.length; i++) {
+      const s = arr[i];
+      sumSquares += s * s;
+    }
+  }
+
+  const totalSamples = length * channels;
+  const meanSquare = sumSquares / totalSamples;
+  const rms = Math.sqrt(meanSquare);
+  if (rms === 0) return -Infinity;
+  const lufs = 20 * Math.log10(rms);
+  return lufs;
+}
+
+/**
+ * Apply linear gain to channel arrays to reach target LUFS.
+ * Modifies arrays in-place and returns them.
+ */
+function normalizeChannelArrays(channelArrays, targetLUFS = -14) {
+  const currentLUFS = calculateLUFSFromChannelArrays(channelArrays);
+  if (currentLUFS === -Infinity) {
+    // silence
+    console.log('Normalization skipped: silence detected.');
+    return channelArrays;
+  }
+
+  // linear gain to reach target: gain = 10^((target - current)/20)
+  let gainChange = Math.pow(10, (targetLUFS - currentLUFS) / 20);
+
+  // safety clamps to avoid absurd gains
+  const MAX_GAIN = 100.0;
+  const MIN_GAIN = 0.001;
+  if (gainChange > MAX_GAIN) gainChange = MAX_GAIN;
+  if (gainChange < MIN_GAIN) gainChange = MIN_GAIN;
+
+  // apply gain
+  const channels = channelArrays.length;
+  const length = channelArrays[0].length;
+  for (let ch = 0; ch < channels; ch++) {
+    const arr = channelArrays[ch];
+    for (let i = 0; i < length; i++) {
+      arr[i] = arr[i] * gainChange;
+    }
+  }
+
+  // prevent clipping: if peak > 1, scale entire buffer down so peak = 1
+  let peak = 0;
+  for (let ch = 0; ch < channels; ch++) {
+    const arr = channelArrays[ch];
+    for (let i = 0; i < arr.length; i++) {
+      const v = Math.abs(arr[i]);
+      if (v > peak) peak = v;
+    }
+  }
+
+  if (peak > 1) {
+    const scaleDown = 1 / peak;
+    console.warn(`Normalization caused clipping; scaling down by ${scaleDown.toFixed(4)} to avoid clipping.`);
+    for (let ch = 0; ch < channels; ch++) {
+      const arr = channelArrays[ch];
+      for (let i = 0; i < arr.length; i++) {
+        arr[i] = arr[i] * scaleDown;
+      }
+    }
+  }
+
+  return channelArrays;
 }
 
 /* ===== Device Management ===== */
@@ -429,6 +518,18 @@ function finalizeCurrentSegment(){
 
   const channels = parseInt(channelsSel.value);
   const channelArrays = flattenFloat32Array(currentSegmentChunks, channels);
+
+  // --- NEW: apply post-process normalization to channelArrays if enabled ---
+  if (normalizationEnabled && normalizeSwitch && normalizeSwitch.checked) {
+    try {
+      normalizeChannelArrays(channelArrays, -14); // target -14 LUFS
+      console.log('Applied -14 LUFS normalization to segment.');
+    } catch (err) {
+      console.warn('Normalization failed:', err);
+    }
+  }
+  // --- end normalization ---
+
   const wavBlob = encodeWAV(channelArrays, sampleRateUsed);
 
   const durationSec = currentSegmentSamples / sampleRateUsed;
@@ -576,6 +677,16 @@ recordBtn.addEventListener('click', async ()=>{
 
 // The Auto-record control is now a checkbox switch (autoRecordSwitch).
 // The processor checks autoRecordSwitch.checked when deciding to finalize segments.
+
+// === NEW: normalize switch hookup ===
+if (normalizeSwitch) {
+  // reflect initial state
+  normalizationEnabled = normalizeSwitch.checked;
+  normalizeSwitch.addEventListener('change', (e) => {
+    normalizationEnabled = e.target.checked;
+    console.log('Normalize Recording:', normalizationEnabled);
+  });
+}
 
 monitorBtn.addEventListener('click', async ()=>{
   if(!audioCtx || audioCtx.state === 'closed' || !source){
