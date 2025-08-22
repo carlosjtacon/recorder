@@ -184,7 +184,11 @@ function encodeWAV(channelArrays, sampleRate) {
   return new Blob([view], { type: 'audio/wav' });
 }
 
-/* ===== Normalization Utilities (new) ===== */
+/* ===== Normalization Utilities (improved) ===== */
+
+const NORMALIZATION_TARGET_LUFS = -20; // moved to -20 for a gentler default
+const NORMALIZATION_MAX_GAIN = 6.0;    // don't amplify more than 6x
+const NORMALIZATION_PEAK_CEILING = 0.98; // final peak ceiling to avoid harsh clipping
 
 /**
  * Estimate LUFS (approx) from channel arrays.
@@ -215,10 +219,10 @@ function calculateLUFSFromChannelArrays(channelArrays) {
 }
 
 /**
- * Apply linear gain to channel arrays to reach target LUFS.
+ * Apply linear gain to channel arrays to reach target LUFS, with safety limits.
  * Modifies arrays in-place and returns them.
  */
-function normalizeChannelArrays(channelArrays, targetLUFS = -14) {
+function normalizeChannelArrays(channelArrays, targetLUFS = NORMALIZATION_TARGET_LUFS) {
   const currentLUFS = calculateLUFSFromChannelArrays(channelArrays);
   if (currentLUFS === -Infinity) {
     // silence
@@ -229,11 +233,14 @@ function normalizeChannelArrays(channelArrays, targetLUFS = -14) {
   // linear gain to reach target: gain = 10^((target - current)/20)
   let gainChange = Math.pow(10, (targetLUFS - currentLUFS) / 20);
 
-  // safety clamps to avoid absurd gains
-  const MAX_GAIN = 100.0;
-  const MIN_GAIN = 0.001;
-  if (gainChange > MAX_GAIN) gainChange = MAX_GAIN;
-  if (gainChange < MIN_GAIN) gainChange = MIN_GAIN;
+  // clamp extreme gain to avoid blasting quiet recordings
+  if (gainChange > NORMALIZATION_MAX_GAIN) {
+    console.warn(`Gain requested (${gainChange.toFixed(2)}x) exceeds max; clamping to ${NORMALIZATION_MAX_GAIN}x.`);
+    gainChange = NORMALIZATION_MAX_GAIN;
+  } else if (gainChange < 1e-6) {
+    // avoid infinitesimal tiny gain (shouldn't happen), clamp
+    gainChange = 1e-6;
+  }
 
   // apply gain
   const channels = channelArrays.length;
@@ -245,7 +252,7 @@ function normalizeChannelArrays(channelArrays, targetLUFS = -14) {
     }
   }
 
-  // prevent clipping: if peak > 1, scale entire buffer down so peak = 1
+  // Prevent clipping: if peak > PEAK_CEILING, scale entire buffer down
   let peak = 0;
   for (let ch = 0; ch < channels; ch++) {
     const arr = channelArrays[ch];
@@ -255,9 +262,9 @@ function normalizeChannelArrays(channelArrays, targetLUFS = -14) {
     }
   }
 
-  if (peak > 1) {
-    const scaleDown = 1 / peak;
-    console.warn(`Normalization caused clipping; scaling down by ${scaleDown.toFixed(4)} to avoid clipping.`);
+  if (peak > NORMALIZATION_PEAK_CEILING) {
+    const scaleDown = NORMALIZATION_PEAK_CEILING / peak;
+    console.warn(`Post-normalization peak (${peak.toFixed(3)}) > ${NORMALIZATION_PEAK_CEILING}; scaling down by ${scaleDown.toFixed(4)}.`);
     for (let ch = 0; ch < channels; ch++) {
       const arr = channelArrays[ch];
       for (let i = 0; i < arr.length; i++) {
@@ -268,6 +275,7 @@ function normalizeChannelArrays(channelArrays, targetLUFS = -14) {
 
   return channelArrays;
 }
+
 
 /* ===== Device Management ===== */
 async function populateDevices(){
