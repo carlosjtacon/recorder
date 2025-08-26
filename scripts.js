@@ -21,6 +21,7 @@ let currentSession = null;          // holds session metadata while recording
 let lastWavBlobUrl = null;          // last created blob URL (unused UI-wise)
 let timerId = null;
 let startTs = 0;
+let autoRecordTs = 0;
 let monitoring = false;
 
 let currentSegmentChunks = [];      // chunks for the currently-building segment
@@ -33,9 +34,10 @@ let bufferSizeUsed = 4096;          // snapshot of processor buffer size
 let normalizationEnabled = false;   // controlled by Normalize switch in UI
 
 /* ===== Silence detection defaults (hidden UI) ===== */
-const SILENCE_DURATION_MS = 800;    // default split silence (ms)
-const SILENCE_THRESHOLD = 0.007;    // increased RMS threshold (was 0.003)
+const SILENCE_DURATION_MS = 1000;    // default split silence (ms)
+const SILENCE_THRESHOLD = 0.005;    // increased RMS threshold (was 0.003)
 const MIN_SEGMENT_SEC = 5.0;        // discard segments shorter than this (seconds)
+const MIN_SONG_LENGTH_SEC = 150;        // discard segments shorter than this (seconds)
 
 /* ===== UI Elements ===== */
 const deviceSel = document.getElementById('device');
@@ -71,6 +73,7 @@ function tsFilename(prefix, ext){
 
 function startTimer(){ 
   startTs = Date.now(); 
+  autoRecordTs = Date.now(); 
   timerId = setInterval(()=>{
     const s = Math.floor((Date.now()-startTs)/1000); 
     timerEl.textContent = `${String(Math.floor(s/60)).padStart(2,'0')}:${String(s%60).padStart(2,'0')}`;
@@ -443,8 +446,14 @@ async function setupAudio(deviceId){
       const segmentDurationSec = currentSegmentSamples / sampleRateUsed;
 
       if (silenceAccumSec >= silenceDur && segmentDurationSec >= MIN_SEGMENT_SEC) {
-        finalizeCurrentSegment(); // will auto-download or discard small ones and reset currentSegment*
         silenceAccumSec = 0;
+        if (Date.now() - autoRecordTs > MIN_SONG_LENGTH_SEC * 1000) {
+          console.log("Autorecord - Finished segment");
+          finalizeCurrentSegment(); // will auto-download or discard small ones and reset currentSegment*
+          autoRecordTs = Date.now();
+        } else {
+          console.log("Autorecord - Finished segment but not applied: ", (Date.now() - autoRecordTs) / 1000, "seconds since latest silence");
+        }
       }
     }
 
